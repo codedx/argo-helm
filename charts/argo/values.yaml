@@ -94,6 +94,7 @@ controller:
   nodeSelector: {}
   tolerations: []
   affinity: {}
+  priorityClassName: ""
 
 executor:
   image:
