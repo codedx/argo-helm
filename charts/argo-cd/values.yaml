@@ -10,12 +10,17 @@ installCRDs: true
 global:
   image:
     repository: argoproj/argocd
-    tag: v1.4.2
+    tag: v1.7.6
     imagePullPolicy: IfNotPresent
   securityContext: {}
   #  runAsUser: 999
   #  runAsGroup: 999
   #  fsGroup: 999
+  imagePullSecrets: []
+  hostAliases: []
+  # - ip: 10.20.30.40
+  #   hostnames:
+  #   - git.myhostname
 
 ## Controller
 controller:
@@ -23,20 +28,23 @@ controller:
 
   image:
     repository: # argoproj/argocd
-    tag: # v1.4.2
+    tag: # v1.7.6
     imagePullPolicy: # IfNotPresent
 
   ## Argo controller commandline flags
   args:
     statusProcessors: "20"
     operationProcessors: "10"
+    appResyncPeriod: "180"
 
+  ## Argo controller log format: text|json
+  logFormat: text
   ## Argo controller log level
   logLevel: info
 
   ## Additional command line arguments to pass to argocd-controller
-  ## key: value
-  extraArgs: {}
+  ##
+  extraArgs: []
 
   ## Environment variables to pass to argocd-controller
   ##
@@ -108,6 +116,8 @@ controller:
   serviceAccount:
     create: true
     name: argocd-application-controller
+    ## Annotations applied to created service account
+    annotations: {}
 
   ## Server metrics controller configuration
   metrics:
@@ -155,7 +165,7 @@ controller:
     #   additionalLabels: {}
 
   ## Enable Admin ClusterRole resources.
-  ## Enable if you would like to grant rights to ArgoCD to deploy to the local kuberentes cluster.
+  ## Enable if you would like to grant rights to ArgoCD to deploy to the local Kubernetes cluster.
   clusterAdminAccess:
     enabled: true
 
@@ -164,9 +174,17 @@ dex:
   enabled: true
   name: dex-server
 
+  metrics:
+    enabled: false
+    service:
+      annotations: {}
+      labels: {}
+    serviceMonitor:
+      enabled: false
+
   image:
     repository: quay.io/dexidp/dex
-    tag: v2.14.0
+    tag: v2.22.0
     imagePullPolicy: IfNotPresent
   initImage:
     repository:
@@ -176,6 +194,14 @@ dex:
   ## Environment variables to pass to the Dex server
   ##
   env: []
+
+  ## Annotations to be added to the Dex server pods
+  ##
+  podAnnotations: {}
+
+  ## Labels to be added to the Dex server pods
+  ##
+  podLabels: {}
 
   serviceAccount:
     create: true
@@ -196,6 +222,8 @@ dex:
   servicePortHttp: 5556
   containerPortGrpc: 5557
   servicePortGrpc: 5557
+  containerPortMetrics: 5558
+  servicePortMetrics: 5558
 
   ## Node selectors and tolerations for server scheduling to nodes with taints
   ## Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/
@@ -228,7 +256,7 @@ redis:
 
   image:
     repository: redis
-    tag: 5.0.3
+    tag: 5.0.8
     imagePullPolicy: IfNotPresent
 
   containerPort: 6379
@@ -237,6 +265,14 @@ redis:
   ## Environment variables to pass to the Redis server
   ##
   env: []
+
+  ## Annotations to be added to the Redis server pods
+  ##
+  podAnnotations: {}
+
+  ## Labels to be added to the Redis server pods
+  ##
+  podLabels: {}
 
   ## Node selectors and tolerations for server scheduling to nodes with taints
   ## Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/
@@ -253,6 +289,12 @@ redis:
     #   drop:
     #     - all
 
+  ## Redis Pod specific security context
+  securityContext:
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+    runAsNonRoot: true
 
   resources: {}
   #  limits:
@@ -264,6 +306,26 @@ redis:
 
   volumeMounts: []
   volumes: []
+
+# This key configures Redis-HA subchart and when enabled (redis-ha.enabled=true)
+# the custom redis deployment is omitted
+redis-ha:
+  enabled: false
+  # Check the redis-ha chart for more properties
+  exporter:
+    enabled: true
+  persistentVolume:
+    enabled: false
+  redis:
+    masterGroupName: argocd
+    config:
+      save: "\"\""
+  haproxy:
+    enabled: true
+    metrics:
+      enabled: true
+  image:
+    tag: 5.0.8-alpine
 
 ## Server
 server:
@@ -280,18 +342,20 @@ server:
 
   image:
     repository: # argoproj/argocd
-    tag: # v1.4.2
+    tag: # v1.7.6
     imagePullPolicy: # IfNotPresent
 
   ## Additional command line arguments to pass to argocd-server
-  ## key: value
-  extraArgs: {}
-  #   insecure: true
+  ##
+  extraArgs: []
+  #  - --insecure
 
   ## Environment variables to pass to argocd-server
   ##
   env: []
 
+  ## Argo server log format: text|json
+  logFormat: text
   ## Argo server log level
   logLevel: info
 
@@ -365,6 +429,11 @@ server:
     type: ClusterIP
     servicePortHttp: 80
     servicePortHttps: 443
+    servicePortHttpName: http
+    servicePortHttpsName: https
+    namedTargetPort: true
+    loadBalancerIP: ""
+    loadBalancerSourceRanges: []
 
   ## Server metrics service configuration
   metrics:
@@ -383,6 +452,8 @@ server:
   serviceAccount:
     create: true
     name: argocd-server
+    ## Annotations applied to created service account
+    annotations: {}
 
   ingress:
     enabled: false
@@ -398,11 +469,46 @@ server:
       # - argocd.example.com
     paths:
       - /
+    extraPaths:
+      []
+      # - path: /*
+      #   backend:
+      #     serviceName: ssl-redirect
+      #     servicePort: use-annotation
     tls:
       []
       # - secretName: argocd-example-tls
       #   hosts:
       #     - argocd.example.com
+    https: false
+  # dedicated ingess for gRPC as documented at
+  # https://argoproj.github.io/argo-cd/operator-manual/ingress/
+  ingressGrpc:
+    enabled: false
+    annotations: {}
+    labels: {}
+
+    ## Argo Ingress.
+    ## Hostnames must be provided if Ingress is enabled.
+    ## Secrets must be manually created in the namespace
+    ##
+    hosts:
+      []
+      # - argocd.example.com
+    paths:
+      - /
+    extraPaths:
+      []
+      # - path: /*
+      #   backend:
+      #     serviceName: ssl-redirect
+      #     servicePort: use-annotation
+    tls:
+      []
+      # - secretName: argocd-example-tls
+      #   hosts:
+      #     - argocd.example.com
+    https: false
 
   # Create a OpenShift Route with SSL passthrough for UI and CLI
   # Consider setting 'hostname' e.g. https://argocd.apps-crc.testing/ using your Default Ingress Controller Domain
@@ -443,6 +549,9 @@ server:
     #     - profile
     #     - email
 
+  ## Annotations to be added to ArgoCD ConfigMap
+  configAnnotations: {}
+
   ## ArgoCD rbac config
   ## reference https://github.com/argoproj/argo-cd/blob/master/docs/operator-manual/rbac.md
   rbacConfig:
@@ -466,6 +575,9 @@ server:
     # If omitted, defaults to: '[groups]'. The scope value can be a string, or a list of strings.
     # scopes: '[cognito:groups, email]'
 
+  ## Annotations to be added to ArgoCD rbac ConfigMap
+  rbacConfigAnnotations: {}
+
   ## Not well tested and not well supported on release v1.0.0.
   ## Applications
   ## reference: https://github.com/argoproj/argo-cd/blob/master/docs/operator-manual/
@@ -484,9 +596,9 @@ server:
   #  destination:
   #     server: https://kubernetes.default.svc
   #     namespace: guestbook
-  #   syncPolicy:
-  #     automated:
-  #       prune: false
+  #  syncPolicy:
+  #    automated:
+  #      prune: false
   #      selfHeal: false
 
   ## Projects
@@ -512,13 +624,59 @@ server:
   #     kind: NetworkPolicy
   #     orphanedResources: {}
   #     roles: []
+  #   namespaceResourceWhitelist:
+  #   - group: 'apps'
+  #     kind: Deployment
+  #   - group: 'apps'
+  #     kind: StatefulSet
   #   orphanedResources: {}
   #   roles: []
+  #   syncWindows:
+  #   - kind: allow
+  #     schedule: '10 1 * * *'
+  #     duration: 1h
+  #     applications:
+  #     - '*-prod'
+  #     manualSync: true
 
   ## Enable Admin ClusterRole resources.
-  ## Enable if you would like to grant rights to ArgoCD to deploy to the local kuberentes cluster.
+  ## Enable if you would like to grant rights to ArgoCD to deploy to the local Kubernetes cluster.
   clusterAdminAccess:
     enabled: true
+
+  ## Enable BackendConfig custom resource for Google Kubernetes Engine
+  GKEbackendConfig:
+    enabled: false
+    spec: {}
+  #  spec:
+  #    iap:
+  #      enabled: true
+  #      oauthclientCredentials:
+  #        secretName: argocd-secret
+
+  extraContainers: []
+  ## Additional containers to be added to the controller pod.
+  ## See https://github.com/lemonldap-ng-controller/lemonldap-ng-controller as example.
+  # - name: my-sidecar
+  #   image: nginx:latest
+  # - name: lemonldap-ng-controller
+  #   image: lemonldapng/lemonldap-ng-controller:0.2.0
+  #   args:
+  #     - /lemonldap-ng-controller
+  #     - --alsologtostderr
+  #     - --configmap=$(POD_NAMESPACE)/lemonldap-ng-configuration
+  #   env:
+  #     - name: POD_NAME
+  #       valueFrom:
+  #         fieldRef:
+  #           fieldPath: metadata.name
+  #     - name: POD_NAMESPACE
+  #       valueFrom:
+  #         fieldRef:
+  #           fieldPath: metadata.namespace
+  #   volumeMounts:
+  #   - name: copy-portal-skins
+  #     mountPath: /srv/var/lib/lemonldap-ng/portal/skins
 
 ## Repo Server
 repoServer:
@@ -535,17 +693,19 @@ repoServer:
 
   image:
     repository: # argoproj/argocd
-    tag: # v1.4.2
+    tag: # v1.7.6
     imagePullPolicy: # IfNotPresent
 
   ## Additional command line arguments to pass to argocd-repo-server
-  ## key: value
-  extraArgs: {}
+  ##
+  extraArgs: []
 
   ## Environment variables to pass to argocd-repo-server
   ##
   env: []
 
+  ## Argo repoServer log format: text|json
+  logFormat: text
   ## Argo repoServer log level
   logLevel: info
 
@@ -669,6 +829,7 @@ repoServer:
 
 ## Argo Configs
 configs:
+  knownHostsAnnotations: {}
   knownHosts:
     data:
       ssh_known_hosts: |
@@ -679,6 +840,7 @@ configs:
         gitlab.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCsj2bNKTBSpIYDEGk9KxsGh3mySTRgMtXL583qmBpzeQ+jqCMRgBqB98u3z++J1sKlXHWfM9dyhSevkMwSbhoR8XIq/U0tCNyokEi/ueaBMCvbcTHhO7FcwzY92WK4Yt0aGROY5qX2UKSeOvuP4D6TPqKF1onrSzH9bx9XUf2lEdWT/ia1NEKjunUqu1xOB/StKDHMoX4/OKyIzuS0q/T1zOATthvasJFoPrAjkohTyaDUz2LN5JoH839hViyEG82yB+MjcFV5MU3N1l1QL3cVUCh93xSaua1N85qivl+siMkPGbO5xR/En4iEY6K2XPASUEMaieWVNTRCtJ4S8H+9
         ssh.dev.azure.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC7Hr1oTWqNqOlzGJOfGJ4NakVyIzf1rXYd4d7wo6jBlkLvCA4odBlL0mDUyZ0/QUfTTqeu+tm22gOsv+VrVTMk6vwRU75gY/y9ut5Mb3bR5BV58dKXyq9A9UeB5Cakehn5Zgm6x1mKoVyf+FFn26iYqXJRgzIZZcZ5V6hrE0Qg39kZm4az48o0AUbf6Sp4SLdvnuMa2sVNwHBboS7EJkm57XQPVU3/QpyNLHbWDdzwtrlS+ez30S3AdYhLKEOxAG8weOnyrtLJAUen9mTkol8oII1edf7mWWbWVf0nBmly21+nZcmCTISQBtdcyPaEno7fFQMDD26/s0lfKob4Kw8H
         vs-ssh.visualstudio.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC7Hr1oTWqNqOlzGJOfGJ4NakVyIzf1rXYd4d7wo6jBlkLvCA4odBlL0mDUyZ0/QUfTTqeu+tm22gOsv+VrVTMk6vwRU75gY/y9ut5Mb3bR5BV58dKXyq9A9UeB5Cakehn5Zgm6x1mKoVyf+FFn26iYqXJRgzIZZcZ5V6hrE0Qg39kZm4az48o0AUbf6Sp4SLdvnuMa2sVNwHBboS7EJkm57XQPVU3/QpyNLHbWDdzwtrlS+ez30S3AdYhLKEOxAG8weOnyrtLJAUen9mTkol8oII1edf7mWWbWVf0nBmly21+nZcmCTISQBtdcyPaEno7fFQMDD26/s0lfKob4Kw8H
+  tlsCertsAnnotations: {}
   tlsCerts:
     {}
     # data:
@@ -738,12 +900,15 @@ configs:
     # -----END RSA PRIVATE KEY-----
   secret:
     createSecret: true
+    ## Annotations to be added to argocd-secret
+    ##
+    annotations: {}
 
     # Webhook Configs
     githubSecret: ""
     gitlabSecret: ""
     bitbucketServerSecret: ""
-    bitbucketUUÌD: ""
+    bitbucketUUID: ""
     gogsSecret: ""
 
     # Custom secrets. Useful for injecting SSO secrets into environment variables.
@@ -769,3 +934,6 @@ configs:
     # argocdServerAdminPassword:
     # Password modification time defaults to current time if not set
     # argocdServerAdminPasswordMtime: "2006-01-02T15:04:05Z"
+
+openshift:
+  enabled: false

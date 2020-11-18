@@ -30,6 +30,14 @@ rules:
   - watch
   - patch
 - apiGroups:
+    - ""
+  resources:
+    - secrets
+  verbs:
+    - get
+    - list
+    - watch
+- apiGroups:
   - argoproj.io
   resources:
   - rollouts
@@ -39,6 +47,12 @@ rules:
   - watch
   - update
   - patch
+- apiGroups:
+  - argoproj.io
+  resources:
+  - rollouts/finalizers
+  verbs:
+  - update
 - apiGroups:
   - argoproj.io
   resources:
@@ -55,7 +69,15 @@ rules:
 - apiGroups:
   - argoproj.io
   resources:
+  - analysisruns/finalizers
+  - experiments/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - argoproj.io
+  resources:
   - analysistemplates
+  - clusteranalysistemplates
   verbs:
   - get
   - list
@@ -73,6 +95,16 @@ rules:
   - patch
   - delete
 - apiGroups:
+  - extensions
+  resources:
+  - ingresses
+  verbs:
+  - create
+  - get
+  - list
+  - watch
+  - patch
+- apiGroups:
   - ""
   resources:
   - events
@@ -88,4 +120,28 @@ rules:
   - watch
   - get
   - update
+  - list
+- apiGroups:
+  - split.smi-spec.io
+  resources:
+  - trafficsplits
+  verbs:
+  - create
+  - watch
+  - get
+  - update
+  - patch
+- apiGroups:
+    - ""
+  resources:
+    - pods
+  verbs:
+    - list
+    - delete
+- apiGroups:
+  - "*"
+  resources:
+  - "*/finalizers"
+  verbs:
+  - "*"
 {{- end }}

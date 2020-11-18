@@ -1,3 +1,4 @@
+{{- $redisHa := (index .Values "redis-ha") -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -39,6 +40,10 @@ spec:
 {{- toYaml .Values.server.podLabels | nindent 8 }}
         {{- end }}
     spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- if .Values.global.securityContext }}
       securityContext: {{- toYaml .Values.global.securityContext | nindent 8 }}
       {{- end }}
@@ -56,18 +61,16 @@ spec:
         - --dex-server
         - http://{{ template "argo-cd.dex.fullname" . }}:{{ .Values.dex.servicePortHttp }}
         {{- end }}
+        - --logformat
+        - {{ .Values.server.logFormat }}
         - --loglevel
         - {{ .Values.server.logLevel }}
-        {{- if .Values.redis.enabled }}
+        {{- if or (and .Values.redis.enabled (not $redisHa.enabled)) (and $redisHa.enabled $redisHa.haproxy.enabled) }}
         - --redis
         - {{ template "argo-cd.redis.fullname" . }}:{{ .Values.redis.servicePort }}
         {{- end }}
-        {{- range $key, $value := .Values.server.extraArgs }}
-          {{- if $value }}
-        - --{{ $key }}={{ $value }}
-          {{- else }}
-        - --{{ $key }}
-          {{- end }}
+        {{- with .Values.server.extraArgs }}
+        {{- . | toYaml | nindent 8 }}
         {{- end }}
         {{- if .Values.server.containerSecurityContext }}
         securityContext: {{- toYaml .Values.server.containerSecurityContext | nindent 10 }}
@@ -117,6 +120,9 @@ spec:
           failureThreshold: {{ .Values.server.readinessProbe.failureThreshold }}
         resources:
 {{- toYaml .Values.server.resources | nindent 10 }}
+    {{- if .Values.server.extraContainers }}
+{{- toYaml .Values.server.extraContainers | nindent 6 }}
+    {{- end }}
     {{- if .Values.server.nodeSelector }}
       nodeSelector:
 {{- toYaml .Values.server.nodeSelector | nindent 8 }}
@@ -130,9 +136,13 @@ spec:
 {{- toYaml .Values.server.affinity | nindent 8 }}
     {{- end }}
       serviceAccountName: {{ template "argo-cd.serverServiceAccountName" . }}
+{{- with .Values.global.hostAliases }}
+      hostAliases:
+{{ toYaml . | indent 6 }}
+{{- end }}
       volumes:
       {{- if .Values.server.volumes }}
-{{- toYaml .Values.server.volumes | nindent 8}}
+{{- toYaml .Values.server.volumes | nindent 6}}
       {{- end }}
       - emptyDir: {}
         name: static-files
@@ -146,3 +156,6 @@ spec:
           name: argocd-tls-certs-cm
         name: tls-certs
       {{- end }}
+{{- if .Values.server.priorityClassName }}
+      priorityClassName: {{ .Values.server.priorityClassName }}
+{{- end }}

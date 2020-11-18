@@ -1,4 +1,5 @@
-{{- if .Values.redis.enabled }}
+{{- $redisHa := (index .Values "redis-ha") -}}
+{{- if and .Values.redis.enabled (not $redisHa.enabled) -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -17,6 +18,12 @@ spec:
       app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.redis.name }}
   template:
     metadata:
+      {{- if .Values.redis.podAnnotations }}
+      annotations:
+      {{- range $key, $value := .Values.redis.podAnnotations }}
+        {{ $key }}: {{ $value | quote }}
+      {{- end }}
+      {{- end }}
       labels:
         app.kubernetes.io/name: {{ include "argo-cd.name" . }}-{{ .Values.redis.name }}
         helm.sh/chart: {{ include "argo-cd.chart" . }}
@@ -24,11 +31,18 @@ spec:
         app.kubernetes.io/managed-by: {{ .Release.Service }}
         app.kubernetes.io/part-of: argocd
         app.kubernetes.io/component: {{ .Values.redis.name }}
-        app.kubernetes.io/version: {{ .Values.redis.image.tag }}        
+        app.kubernetes.io/version: {{ .Values.redis.image.tag }}
+        {{- if .Values.redis.podLabels }}
+{{- toYaml .Values.redis.podLabels | nindent 8 }}
+        {{- end }}
     spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       automountServiceAccountToken: false
-      {{- if .Values.global.securityContext }}
-      securityContext: {{- toYaml .Values.global.securityContext | nindent 8 }}
+      {{- if .Values.redis.securityContext }}
+      securityContext: {{- toYaml .Values.redis.securityContext | nindent 8 }}
       {{- end }}
       containers:
       - name: {{ template "argo-cd.redis.fullname" . }}
@@ -70,5 +84,8 @@ spec:
 {{- if .Values.redis.volumes }}
       volumes:
 {{- toYaml .Values.redis.volumes | nindent 8}}
+{{- end }}
+{{- if .Values.redis.priorityClassName }}
+      priorityClassName: {{ .Values.redis.priorityClassName }}
 {{- end }}
 {{- end }}
