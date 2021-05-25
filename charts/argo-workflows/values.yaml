@@ -141,6 +141,7 @@ controller:
   # ref: https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/
   # PriorityClass: system-cluster-critical
   priorityClassName: ""
+  priorityClassValue: 0
   # https://argoproj.github.io/argo-workflows/links/
   links: []
 

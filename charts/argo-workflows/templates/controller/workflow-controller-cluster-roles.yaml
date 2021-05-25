@@ -125,6 +125,9 @@ rules:
   resourceNames:
   - workflow-controller
   - workflow-controller-lease
+{{- if .Values.controller.instanceID.enabled }}
+  - {{ printf "%s-%s" "workflow-controller" (include "controller.instanceID" .) }}
+{{- end }}
   verbs:
   - get
   - watch

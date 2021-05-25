@@ -94,3 +94,15 @@ Return the appropriate apiVersion for ingress
 {{- print "networking.k8s.io/v1" -}}
 {{- end -}}
 {{- end -}}
+
+{{- define "controller.priorityClassName" -}}
+    {{- printf "%s-%s" "pc" (include "argo-workflows.controller.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{- define "controller.instanceID" -}}
+    {{- if .Values.controller.instanceID.useReleaseName -}}
+        {{- .Release.Name -}}
+    {{- else -}}
+        {{- .Values.controller.instanceID.explicitID -}}
+    {{- end -}}
+{{- end -}}
